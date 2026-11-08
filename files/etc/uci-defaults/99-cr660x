@@ -26,6 +26,22 @@ uci set wireless.radio1.band='5g'
 uci set wireless.radio1.channel='auto'
 uci set wireless.radio1.band_steering='1'
 
+# === 开源 mt76 驱动调优参数（build-open.yml 版本生效）===
+# 最大发射功率 (dBm)
+uci set wireless.radio0.txpower='23'
+uci set wireless.radio1.txpower='23'
+# 启用 HE (802.11ax) BSS Coloring
+uci set wireless.radio0.he_bss_color='1'
+uci set wireless.radio1.he_bss_color='1'
+# 启用 MU-MIMO Beamformer/Beamformee
+uci set wireless.radio0.mu_beamformer='1'
+uci set wireless.radio1.mu_beamformer='1'
+uci set wireless.radio0.mu_beamformee='1'
+uci set wireless.radio1.mu_beamformee='1'
+# 可选：固定信道避免 DFS/自动选信道抖动（按环境启用）
+# uci set wireless.radio0.channel='6'
+# uci set wireless.radio1.channel='149'
+
 # 默认 wifi-iface[0] 绑定 radio0，wifi-iface[1] 绑定 radio1
 # 统一 SSID/加密/密码，实现双频合一
 uci set wireless.default_radio0.disabled='0'

@@ -1,0 +1,170 @@
+name: OpenWrt CR660X ImageBuilder (Open-Source mt76)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "OpenWrt 版本（如 25.12.6），留空自动用最新 25.12.x"
+        required: false
+        default: ""
+      device:
+        description: "设备：all / cr6606 / cr6608 / cr6609"
+        required: false
+        default: "all"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: imagebuilder-open-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 构建 CR660X 固件 (开源 mt76 + 调优)
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      DEVICE: ${{ github.event.inputs.device }}
+      REQUESTED_VERSION: ${{ github.event.inputs.version }}
+      EXTRA_PACKAGES: >-
+        luci luci-i18n-base-zh-cn
+        luci-theme-argon luci-app-argon-config luci-i18n-argon-config-zh-cn
+        luci-app-mosdns luci-i18n-mosdns-zh-cn
+        kmod-mt7915-firmware kmod-mt7915e kmod-mt76-xqca
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends zstd curl ca-certificates
+
+      - name: 确定 OpenWrt 版本
+        id: ver
+        run: |
+          set -euo pipefail
+          VERSION="${REQUESTED_VERSION}"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(curl -fsSL --retry 5 --retry-all-errors \
+              https://downloads.openwrt.org/releases/ \
+              | grep -oE '25\.12\.[0-9]+/' | tr -d '/' | sort -V | tail -n1)
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "无法确定 OpenWrt 版本"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "本次使用 OpenWrt $VERSION"
+
+      - name: 下载 ImageBuilder
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          FILE="openwrt-imagebuilder-${VERSION}-ramips-mt7621.Linux-x86_64.tar.zst"
+          URL="https://downloads.openwrt.org/releases/${VERSION}/targets/ramips/mt7621/${FILE}"
+          echo "下载: $URL"
+          curl -fL --retry 5 --retry-all-errors --connect-timeout 20 -o ib.tar.zst "$URL"
+          mkdir -p ib
+          tar --use-compress-program=unzstd -xf ib.tar.zst -C ib --strip-components=1
+          test -f ib/Makefile
+          echo "ImageBuilder 就绪"
+
+      - name: 下载第三方软件包（Argon / MosDNS）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p third_party/argon third_party/mosdns ib/packages
+
+          # Argon 主题
+          gh release download -R jerrykuku/luci-theme-argon -D third_party/argon --clobber \
+            -p 'luci-theme-argon-*.apk' \
+            -p 'luci-app-argon-config-*.apk' \
+            -p 'luci-i18n-argon-config-zh-cn-*.apk'
+
+          # MosDNS v5
+          gh release download -R sbwml/luci-app-mosdns -D third_party/mosdns --clobber \
+            -p 'mipsel_24kc-openwrt-25.12.tar.gz'
+          tar -xzf third_party/mosdns/mipsel_24kc-openwrt-25.12.tar.gz -C third_party/mosdns
+
+          cp third_party/argon/*.apk ib/packages/
+          cp third_party/mosdns/packages_ci/*.apk ib/packages/
+          echo "已准备软件包："
+          ls -lh ib/packages/*.apk
+
+      - name: 构建固件
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          case "${DEVICE:-all}" in
+            all) PROFILES="xiaomi_mi-router-cr6606 xiaomi_mi-router-cr6608 xiaomi_mi-router-cr6609" ;;
+            cr6606|cr6608|cr6609) PROFILES="xiaomi_mi-router-${DEVICE}" ;;
+            xiaomi_mi-router-*) PROFILES="${DEVICE}" ;;
+            *) echo "不支持的设备: ${DEVICE}"; exit 1 ;;
+          esac
+          echo "构建设备: ${PROFILES}"
+
+          mkdir -p out
+          cd ib
+          for P in ${PROFILES}; do
+            echo "::group::ImageBuilder ${P}"
+            make image \
+              PROFILE="${P}" \
+              PACKAGES="${EXTRA_PACKAGES}" \
+              FILES="${GITHUB_WORKSPACE}/files"
+            echo "::endgroup::"
+          done
+          cd "${GITHUB_WORKSPACE}"
+
+          find ib/bin/targets -type f \
+            \( -name '*.bin' -o -name '*.itb' -o -name '*.manifest' \) \
+            -exec cp -v {} out/ \;
+          ( cd out && sha256sum -- * > SHA256SUMS )
+          ls -lh out
+
+      - name: 上传构建产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-${{ steps.ver.outputs.version }}-cr660x-open-${{ github.run_number }}
+          path: out/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: 发布到 GitHub Releases
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: cr660x-${{ steps.ver.outputs.version }}-open-${{ github.run_number }}
+          name: OpenWrt ${{ steps.ver.outputs.version }} for CR660X (Open-Source mt76) #${{ github.run_number }}
+          body: |
+            ## OpenWrt ${{ steps.ver.outputs.version }} · Xiaomi CR660X (Open-Source mt76)
+
+            使用 **官方 ImageBuilder** 组装，驱动为 **开源 mt76 (mt7915e)**，
+            已应用常见性能调优参数（txpower、HE、MU-MIMO、禁电源管理等）。
+
+            | 项目 | 内容 |
+            | --- | --- |
+            | 设备 | CR6606 / CR6608 / CR6609 (ramips/mt7621) |
+            | 管理地址 | http://192.168.66.1（默认无密码） |
+            | WiFi | 双频合一 `cr660x` / `12345678` |
+            | 驱动 | 开源 mt76 (mt7915e) + 调优参数 |
+            | 主题 | Argon（第三方） |
+            | DNS | MosDNS v5（第三方） |
+            | 附加 | LuCI、中文、v2ray-geoip/geosite/geo2txt |
+
+            ### 刷机说明
+            - 已在 OpenWrt：用 `*-squashfs-sysupgrade.bin` 升级
+            - 首次刷入：先刷 `*-initramfs-kernel.bin` 进入临时系统，再刷 sysupgrade
+
+            校验文件见 `SHA256SUMS`。
+          files: out/*
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
