@@ -108,7 +108,10 @@ jobs:
         working-directory: ./openwrt
         run: |
           # 完整日志输出（不再 tail 截断），pipefail 保证退出码真实
+          # CMAKE_POLICY_VERSION_MINIMUM：修复 dwarves 等旧工程在新版 CMake (>=3.31) 下
+          # "Compatibility with CMake < 3.5 has been removed" 报错
           set -o pipefail
+          export CMAKE_POLICY_VERSION_MINIMUM=3.5
           make -j$(nproc) V=s 2>&1 | tee build.log
 
       - name: 编译失败时输出错误摘要
