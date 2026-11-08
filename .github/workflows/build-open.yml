@@ -32,7 +32,7 @@ jobs:
         luci luci-i18n-base-zh-cn
         luci-theme-argon luci-app-argon-config luci-i18n-argon-config-zh-cn
         luci-app-mosdns luci-i18n-mosdns-zh-cn
-        kmod-mt7915-firmware kmod-mt7915e kmod-mt76-xqca
+        kmod-mt7915-firmware kmod-mt7915e
 
     steps:
       - name: 检出仓库

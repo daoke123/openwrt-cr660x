@@ -48,38 +48,34 @@ jobs:
           cd openwrt
           echo "LEAN_COMMIT=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
 
-      - name: 应用自定义配置
+      - name: 生成 .config
+        working-directory: ./openwrt
         run: |
-          cd openwrt
-          # 1. 基础配置
-          cat > .config <<'EOF'
-  CONFIG_TARGET_ramips=y
-  CONFIG_TARGET_SUBTARGET_mt7621=y
-  CONFIG_TARGET_PROFILE_XIAOMI_MI_ROUTER_CR660X=y
-  CONFIG_PACKAGE_luci=y
-  CONFIG_PACKAGE_luci-theme-argon=y
-  CONFIG_PACKAGE_luci-app-argon-config=y
-  CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn=y
-  CONFIG_PACKAGE_luci-app-mosdns=y
-  CONFIG_PACKAGE_luci-i18n-mosdns-zh-cn=y
-  CONFIG_PACKAGE_kmod-mt7915-firmware=y
-  CONFIG_PACKAGE_kmod-mt7915e=y
-  CONFIG_PACKAGE_kmod-mt76-xqca=y
-  CONFIG_PACKAGE_kmod-gpio-button-hotplug=y
-  CONFIG_PACKAGE_kmod-leds-gpio=y
-  EOF
+          printf '%s\n' \
+            'CONFIG_TARGET_ramips=y' \
+            'CONFIG_TARGET_SUBTARGET_mt7621=y' \
+            'CONFIG_TARGET_PROFILE_XIAOMI_MI_ROUTER_CR660X=y' \
+            'CONFIG_PACKAGE_luci=y' \
+            'CONFIG_PACKAGE_luci-theme-argon=y' \
+            'CONFIG_PACKAGE_luci-app-argon-config=y' \
+            'CONFIG_PACKAGE_luci-i18n-argon-config-zh-cn=y' \
+            'CONFIG_PACKAGE_luci-app-mosdns=y' \
+            'CONFIG_PACKAGE_luci-i18n-mosdns-zh-cn=y' \
+            'CONFIG_PACKAGE_kmod-mt7915-firmware=y' \
+            'CONFIG_PACKAGE_kmod-mt7915e=y' \
+            'CONFIG_PACKAGE_kmod-gpio-button-hotplug=y' \
+            'CONFIG_PACKAGE_kmod-leds-gpio=y' \
+            'CONFIG_PACKAGE_mt_wifi=y' \
+            'CONFIG_MTK_CHIP_MT7915E_DBDC=y' \
+            'CONFIG_PACKAGE_kmod-mt7615d_dbdc=y' \
+            > .config
+          echo "===== .config 内容 ====="
+          cat .config
 
-          # 2. 启用闭源 mt_wifi (MT7915E DBDC)
-          cat >> .config <<'EOF'
-  # MediaTek 闭源 WiFi 驱动
-  CONFIG_PACKAGE_mt_wifi=y
-  CONFIG_MTK_CHIP_MT7915E_DBDC=y
-  # 关闭开源 mt76 相关（避免冲突）
-  # CONFIG_PACKAGE_kmod-mt7915e is not set
-  # CONFIG_PACKAGE_kmod-mt76-xqca is not set
-  EOF
-
-          # 3. 拷贝 uci-defaults（含 WiFi 配置）
+      - name: 拷贝 uci-defaults
+        working-directory: ./openwrt
+        run: |
+          mkdir -p files/etc/uci-defaults
           cp "${GITHUB_WORKSPACE}/files/etc/uci-defaults/99-cr660x" files/etc/uci-defaults/
           chmod +x files/etc/uci-defaults/99-cr660x
 
@@ -89,19 +85,12 @@ jobs:
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: 删除开源 mt76 避免冲突（可选，视编译结果）
-        working-directory: ./openwrt
-        run: |
-          # mt_wifi 会 CONFLICTS kmod-mt7615d_dbdc，但保留 kmod-mt7915-firmware 一般无害
-          # 如需彻底移除开源驱动，取消下面注释
-          # find ./package -name "*mt76*" -type d | xargs -r rm -rf
-          # find ./package -name "*mt7915*" -type d | xargs -r rm -rf
-          true
-
       - name: 生成默认配置
         working-directory: ./openwrt
         run: |
           make defconfig
+          echo "===== 关键配置项确认 ====="
+          grep -E "mt_wifi|MT7915|CR660" .config | head -20 || true
 
       - name: 下载编译依赖
         working-directory: ./openwrt
@@ -111,7 +100,7 @@ jobs:
       - name: 编译固件
         working-directory: ./openwrt
         run: |
-          make -j$(nproc) V=s
+          make -j$(nproc) V=s 2>&1 | tail -100
 
       - name: 收集固件
         run: |
