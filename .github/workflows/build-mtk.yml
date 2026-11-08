@@ -36,16 +36,18 @@ jobs:
       - name: 安装编译依赖
         run: |
           sudo apt-get update
-          # Lean LEDE 官方完整依赖列表
+          # 核心必需依赖（必须成功；python3-distutils 在新 Ubuntu 已移除，不再需要）
           sudo apt-get install -y --no-install-recommends \
-            build-essential asciidoc binutils bzip2 gawk gettext git \
-            libncurses-dev libz-dev patch unzip zlib1g-dev flex \
-            subversion uglifyjs gcc-multilib g++-multilib p7zip p7zip-full \
-            msmtp libssl-dev texinfo libglib2.0-dev xmlto qemu-utils \
-            upx-ucl libelf-dev autoconf automake libtool autopoint \
-            device-tree-compiler antlr3 gperf wget curl file swig \
-            python3 python3-pyelftools python3-distutils rsync xxd xz-utils \
-            ccache zstd
+            build-essential binutils bzip2 gawk gettext git \
+            libncurses-dev libz-dev patch unzip zlib1g-dev flex bison \
+            libssl-dev texinfo wget curl file swig subversion \
+            python3 python3-pyelftools rsync xxd xz-utils ccache zstd
+          # 扩展依赖（部分包在新版 Ubuntu 可能已不存在，允许失败）
+          sudo apt-get install -y --no-install-recommends \
+            asciidoc uglifyjs gcc-multilib g++-multilib p7zip p7zip-full \
+            msmtp libglib2.0-dev xmlto qemu-utils upx-ucl libelf-dev \
+            autoconf automake libtool autopoint device-tree-compiler \
+            antlr3 gperf || echo "部分扩展依赖不可用，继续"
 
       - name: 克隆 Lean LEDE 源码
         run: |
@@ -100,7 +102,7 @@ jobs:
       - name: 下载编译依赖
         working-directory: ./openwrt
         run: |
-          make download -j$(nproc)
+          make download -j$(nproc) || make download -j1 V=s
 
       - name: 编译固件
         working-directory: ./openwrt
