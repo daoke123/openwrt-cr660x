@@ -1,0 +1,6 @@
+src-gz core http://downloads.openwrt.org/releases/snapshots/targets/ramips/mt7621/packages/base
+src-gz base http://downloads.openwrt.org/releases/snapshots/packages/mipsel_24kc/base
+src-gz luci http://downloads.openwrt.org/releases/snapshots/packages/mipsel_24kc/luci
+src-gz routing http://downloads.openwrt.org/releases/snapshots/packages/mipsel_24kc/routing
+src-gz telephony http://downloads.openwrt.org/releases/snapshots/packages/mipsel_24kc/telephony
+src-gz management http://downloads.openwrt.org/releases/snapshots/packages/mipsel_24kc/management
