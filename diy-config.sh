@@ -6,7 +6,7 @@ set -e
 ./scripts/feeds install -a
 
 # 2. 安装 Argon 主题（Lean luci feed 中通常已包含）
-./scripts/feeds install -p luci -l luci-theme-argon || true
+./scripts/feeds install -p luci luci-theme-argon || true
 
 # 3. 删除源码中自带的 mosdns / v2ray-geodata，避免冲突
 find ./ | grep Makefile | grep v2ray-geodata | xargs -r rm -f
