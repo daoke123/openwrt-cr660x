@@ -1,5 +1,5 @@
 #!/bin/sh
-# 首次启动时执行：设置 LAN 地址、主机名、时区、默认中文界面
+# 首次启动时执行：设置 LAN 地址、主机名、时区、默认中文界面、WiFi
 uci set network.lan.ipaddr='192.168.66.1'
 uci set network.lan.netmask='255.255.255.0'
 uci commit network
@@ -11,5 +11,35 @@ uci commit system
 
 uci set luci.main.lang='zh_cn'
 uci commit luci
+
+# WiFi 配置：双频合一（同一 SSID/密码），启用 2.4G + 5G
+# radio0 = 2.4GHz, radio1 = 5GHz (mt7915e)
+uci set wireless.radio0.disabled='0'
+uci set wireless.radio0.country='CN'
+uci set wireless.radio0.band='2g'
+uci set wireless.radio0.channel='auto'
+uci set wireless.radio0.band_steering='1'
+
+uci set wireless.radio1.disabled='0'
+uci set wireless.radio1.country='CN'
+uci set wireless.radio1.band='5g'
+uci set wireless.radio1.channel='auto'
+uci set wireless.radio1.band_steering='1'
+
+# 默认 wifi-iface[0] 绑定 radio0，wifi-iface[1] 绑定 radio1
+# 统一 SSID/加密/密码，实现双频合一
+uci set wireless.default_radio0.disabled='0'
+uci set wireless.default_radio0.ssid='cr660x'
+uci set wireless.default_radio0.encryption='psk2+ccmp'
+uci set wireless.default_radio0.key='12345678'
+uci set wireless.default_radio0.network='lan'
+
+uci set wireless.default_radio1.disabled='0'
+uci set wireless.default_radio1.ssid='cr660x'
+uci set wireless.default_radio1.encryption='psk2+ccmp'
+uci set wireless.default_radio1.key='12345678'
+uci set wireless.default_radio1.network='lan'
+
+uci commit wireless
 
 exit 0
