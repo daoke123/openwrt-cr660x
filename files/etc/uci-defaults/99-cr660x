@@ -1,0 +1,15 @@
+#!/bin/sh
+# 首次启动时执行：设置 LAN 地址、主机名、时区、默认中文界面
+uci set network.lan.ipaddr='192.168.66.1'
+uci set network.lan.netmask='255.255.255.0'
+uci commit network
+
+uci set system.@system[0].hostname='CR660X'
+uci set system.@system[0].timezone='CST-8'
+uci set system.@system[0].zonename='Asia/Shanghai'
+uci commit system
+
+uci set luci.main.lang='zh_cn'
+uci commit luci
+
+exit 0
