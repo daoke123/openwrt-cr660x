@@ -9,6 +9,43 @@ on:
         required: false
 
 jobs:
-  build-openwrt:
+  build:
     runs-on: ubuntu-latest
     timeout-minutes: 240
+
+    steps:
+      - name: Checkout config repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential git ccache libncurses-dev gawk flex bison \
+            unzip gettext zlib1g-dev libssl-dev python3 python3-pyelftools rsync \
+            subversion swig texinfo uglifyjs upx-ucl xmlto xxd xz-utils
+
+      - name: Clone OpenWRT source
+        run: |
+          git clone --depth 1 -b ${{ github.event.inputs.branch || 'master' }} https://github.com/coolsnowwolf/lede openwrt
+
+      - name: Apply custom configuration
+        run: |
+          cp .config openwrt/.config
+          cp diy-config.sh openwrt/diy-config.sh
+          chmod +x openwrt/diy-config.sh
+
+      - name: Run diy-config
+        working-directory: ./openwrt
+        run: ./diy-config.sh
+
+      - name: Compile firmware
+        working-directory: ./openwrt
+        run: make -j1 V=s
+
+      - name: Upload firmware
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-cr660x-${{ github.run_number }}
+          path: openwrt/bin/targets/ramips/mt7621/
+          retention-days: 30
