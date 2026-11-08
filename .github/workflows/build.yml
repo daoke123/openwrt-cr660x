@@ -1,0 +1,14 @@
+name: OpenWRT CR660X Cloud Compilation
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to build'
+        default: 'master'
+        required: false
+
+jobs:
+  build-openwrt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
