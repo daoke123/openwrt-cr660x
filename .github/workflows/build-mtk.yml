@@ -69,7 +69,6 @@ jobs:
             'CONFIG_PACKAGE_luci-app-mosdns=y' \
             'CONFIG_PACKAGE_luci-i18n-mosdns-zh-cn=y' \
             'CONFIG_PACKAGE_kmod-mt7915-firmware=y' \
-            'CONFIG_PACKAGE_kmod-mt7915e=y' \
             'CONFIG_PACKAGE_kmod-gpio-button-hotplug=y' \
             'CONFIG_PACKAGE_kmod-leds-gpio=y' \
             'CONFIG_PACKAGE_mt_wifi=y' \
@@ -78,6 +77,20 @@ jobs:
             > .config
           echo "===== .config 内容 ====="
           cat .config
+
+      - name: 启用内核 WEXT 兼容层（闭源驱动依赖）
+        working-directory: ./openwrt
+        run: |
+          # mt_wifi 闭源驱动使用 wireless_send_event 等 WEXT API，
+          # 需要内核启用 CFG80211_WEXT（自动 select WEXT_CORE）
+          CFGFILE=$(ls target/linux/ramips/mt7621/config-* 2>/dev/null | tail -n1)
+          echo "内核配置文件: $CFGFILE"
+          if [ -n "$CFGFILE" ]; then
+            grep -q "^CONFIG_CFG80211_WEXT=y" "$CFGFILE" || echo "CONFIG_CFG80211_WEXT=y" >> "$CFGFILE"
+            tail -5 "$CFGFILE"
+          else
+            echo "未找到 ramips/mt7621 内核配置文件！"; exit 1
+          fi
 
       - name: 拷贝 uci-defaults
         working-directory: ./openwrt
