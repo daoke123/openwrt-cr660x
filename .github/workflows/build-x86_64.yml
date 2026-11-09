@@ -1,0 +1,167 @@
+name: OpenWrt x86_64 ImageBuilder (x86/64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "OpenWrt 版本（如 25.12.6），留空自动用最新 25.12.x"
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+concurrency:
+  group: imagebuilder-x86_64-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: 构建 x86_64 固件
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    env:
+      REQUESTED_VERSION: ${{ github.event.inputs.version }}
+      EXTRA_PACKAGES: >-
+        luci luci-i18n-base-zh-cn
+        luci-theme-argon luci-app-argon-config luci-i18n-argon-config-zh-cn
+        luci-app-mosdns luci-i18n-mosdns-zh-cn
+        smartdns luci-app-smartdns
+        adguardhome luci-app-adguardhome
+
+    steps:
+      - name: 检出仓库
+        uses: actions/checkout@v4
+
+      - name: 安装依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends zstd curl ca-certificates
+
+      - name: 确定 OpenWrt 版本
+        id: ver
+        run: |
+          set -euo pipefail
+          VERSION="${REQUESTED_VERSION}"
+          if [ -z "$VERSION" ]; then
+            VERSION=$(curl -fsSL --retry 5 --retry-all-errors \
+              https://downloads.openwrt.org/releases/ \
+              | grep -oE '25\.12\.[0-9]+/' | tr -d '/' | sort -V | tail -n1)
+          fi
+          if [ -z "$VERSION" ]; then
+            echo "无法确定 OpenWrt 版本"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "本次使用 OpenWrt $VERSION"
+
+      - name: 下载 ImageBuilder (x86/64)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          FILE="openwrt-imagebuilder-${VERSION}-x86-64.Linux-x86_64.tar.zst"
+          URL="https://downloads.openwrt.org/releases/${VERSION}/targets/x86/64/${FILE}"
+          echo "下载: $URL"
+          curl -fL --retry 5 --retry-all-errors --connect-timeout 20 -o ib.tar.zst "$URL"
+          mkdir -p ib
+          tar --use-compress-program=unzstd -xf ib.tar.zst -C ib --strip-components=1
+          test -f ib/Makefile
+          echo "ImageBuilder 就绪"
+
+      - name: 下载第三方软件包（Argon / MosDNS - x86_64）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p third_party/argon third_party/mosdns ib/packages
+
+          # Argon 主题 (x86_64)
+          gh release download -R jerrykuku/luci-theme-argon -D third_party/argon --clobber \
+            -p 'luci-theme-argon-*.apk' \
+            -p 'luci-app-argon-config-*.apk' \
+            -p 'luci-i18n-argon-config-zh-cn-*.apk'
+
+          # MosDNS v5 (x86_64)
+          gh release download -R sbwml/luci-app-mosdns -D third_party/mosdns --clobber \
+            -p 'x86_64-openwrt-25.12.tar.gz'
+          tar -xzf third_party/mosdns/x86_64-openwrt-25.12.tar.gz -C third_party/mosdns
+
+          cp third_party/argon/*.apk ib/packages/
+          cp third_party/mosdns/packages_ci/*.apk ib/packages/
+          echo "已准备第三方软件包："
+          ls -lh ib/packages/*.apk
+
+      - name: 构建固件 (generic profile)
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+        run: |
+          set -euo pipefail
+          echo "构建设备: generic (x86/64)"
+
+          mkdir -p out
+          cd ib
+          echo "::group::ImageBuilder generic"
+          make image \
+            PROFILE="generic" \
+            PACKAGES="${EXTRA_PACKAGES}" \
+            FILES="${GITHUB_WORKSPACE}/files-x86" \
+            CONFIG_TARGET_ROOTFS_PARTSIZE=1024
+          echo "::endgroup::"
+          cd "${GITHUB_WORKSPACE}"
+
+          find ib/bin/targets -type f \
+            \( -name '*.img.gz' -o -name '*.bin' -o -name '*.manifest' \) \
+            -exec cp -v {} out/ \;
+          ( cd out && sha256sum -- * > SHA256SUMS )
+          ls -lh out
+
+      - name: 上传构建产物
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: openwrt-${{ steps.ver.outputs.version }}-x86_64-open-${{ github.run_number }}
+          path: out/
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: 发布到 GitHub Releases
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: x86_64-${{ steps.ver.outputs.version }}-open-${{ github.run_number }}
+          name: OpenWrt ${{ steps.ver.outputs.version }} for x86_64 #${{ github.run_number }}
+          body: |
+            ## OpenWrt ${{ steps.ver.outputs.version }} · Generic x86_64
+
+            使用 **官方 ImageBuilder** 组装。
+
+            | 项目 | 内容 |
+            | --- | --- |
+            | 设备 | Generic x86/64 (UEFI + Legacy BIOS) |
+            | 管理地址 | http://192.168.31.66（默认无密码，静态 IP） |
+            | 主题 | Argon（第三方） |
+            | DNS | MosDNS v5（第三方）+ SmartDNS + AdGuard Home |
+            | 附加 | LuCI、中文、smartdns、adguardhome |
+
+            ### 固件文件说明
+            - `*-ext4-combined-efi.img.gz` - **推荐**，UEFI 启动，包含完整分区表
+            - `*-ext4-combined.img.gz` - Legacy BIOS 启动，包含完整分区表
+            - `*-squashfs-combined-efi.img.gz` - UEFI，squashfs 只读根分区（可用 overlay）
+            - `*-kernel.bin` / `*-rootfs.img.gz` - 内核+根分区分离
+
+            ### 写盘/刷机说明
+            1. 解压 `.gz` 文件得到 `.img`
+            2. 使用 `dd` / `balenaEtcher` / `Ventoy` / `Rufus` 写入 USB/硬盘
+            3. UEFI 机器用 `-efi.img`，老旧 BIOS 用 `-combined.img`
+
+            ### 首次启动配置
+            - LAN 默认 **静态 IP `192.168.31.66`**，网关 `192.168.31.1`，DNS `192.168.31.1`
+            - 请确保上级路由网段为 `192.168.31.x`，或首次启动后进入 LuCI 修改网络设置
+
+            校验文件见 `SHA256SUMS`。
+          files: out/*
+          fail_on_unmatched_files: true
+          draft: false
+          prerelease: false
