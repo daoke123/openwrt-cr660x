@@ -102,12 +102,13 @@ jobs:
 
           mkdir -p out
           cd ib
+          mkdir -p tmp  # 修复 TMPDIR 目录不存在问题
           echo "::group::ImageBuilder generic"
           make image \
             PROFILE="generic" \
             PACKAGES="${EXTRA_PACKAGES}" \
             FILES="${GITHUB_WORKSPACE}/files-x86" \
-            CONFIG_TARGET_ROOTFS_PARTSIZE=1024
+            ROOTFS_PARTSIZE=1024
           echo "::endgroup::"
           cd "${GITHUB_WORKSPACE}"
 
