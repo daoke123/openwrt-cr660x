@@ -27,8 +27,8 @@ jobs:
         luci luci-i18n-base-zh-cn
         luci-theme-argon luci-app-argon-config luci-i18n-argon-config-zh-cn
         luci-app-mosdns luci-i18n-mosdns-zh-cn
-        smartdns luci-app-smartdns
-        adguardhome luci-app-adguardhome
+        smartdns luci-app-smartdns luci-i18n-smartdns-zh-cn
+        adguardhome luci-app-adguardhome luci-i18n-adguardhome-zh-cn
 
     steps:
       - name: 检出仓库
